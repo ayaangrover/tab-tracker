@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 
 const mongoURI =
-  "mongodb+srv://ayaangrover:oISBnBgfZDzF0Trh@tabtracker.ztoy8.mongodb.net/?retryWrites=true&w=majority&appName=tabTracker";
+  "MONGO_DB_URI";
 
 mongoose
   .connect(mongoURI)
@@ -63,11 +63,9 @@ app.post("/login", async (req, res) => {
     return res.status(401).send("Invalid Credentials");
   }
 
-  // Return user ID or some identifier instead of a token
   res.json({ userId: user._id, username: user.username });
 });
 
-// Function to log activity to your server
 app.post("/track", async (req, res) => {
   const { userId, tabVisited } = req.body;
 
@@ -75,10 +73,9 @@ app.post("/track", async (req, res) => {
     return res.status(400).send("User ID and tabVisited are required.");
   }
 
-  // Get the current time
   const now = new Date();
-  const tenMinutesAgo = new Date(now.getTime() - 10 * 60000); // 10 minutes in the past
-
+  const tenMinutesAgo = new Date(now.getTime() - 10 * 60000); 
+  
   // Check for existing activity within the last 10 minutes
   const existingActivity = await Activity.findOne({
     userId,
@@ -116,7 +113,6 @@ app.post("/track", async (req, res) => {
 
 app.delete("/clear-entries", async (req, res) => {
   try {
-    // Delete all documents in the Activity collection
     await Activity.deleteMany({});
 
     res.status(200).send("All activity entries cleared successfully.");
@@ -128,11 +124,11 @@ app.delete("/clear-entries", async (req, res) => {
 
 app.get("/activity", async (req, res) => {
   try {
-    const activities = await Activity.find().populate("userId"); // Populate userId to get the username
+    const activities = await Activity.find().populate("userId"); 
 
     // Create structured response
     const response = activities.map((activity) => ({
-      userId: activity.userId.username, // Access the username directly after population
+      userId: activity.userId.username,
       activity: activity.activity,
     }));
 
