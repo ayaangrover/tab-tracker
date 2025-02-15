@@ -33,7 +33,6 @@ const activitySchema = new mongoose.Schema({
 const User = mongoose.model("User", userSchema);
 const Activity = mongoose.model("Activity", activitySchema);
 
-// User registration
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
 
@@ -54,7 +53,6 @@ app.post("/register", async (req, res) => {
   }
 });
 
-// User login
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   const user = await User.findOne({ username });
@@ -76,7 +74,6 @@ app.post("/track", async (req, res) => {
   const now = new Date();
   const tenMinutesAgo = new Date(now.getTime() - 10 * 60000); 
   
-  // Check for existing activity within the last 10 minutes
   const existingActivity = await Activity.findOne({
     userId,
     "activity.tabVisited": tabVisited,
@@ -126,7 +123,6 @@ app.get("/activity", async (req, res) => {
   try {
     const activities = await Activity.find().populate("userId"); 
 
-    // Create structured response
     const response = activities.map((activity) => ({
       userId: activity.userId.username,
       activity: activity.activity,
