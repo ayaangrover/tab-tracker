@@ -1,1 +1,1 @@
-A tab tracker extension with mongodb. Meant for teachers i suppose.
+A tab tracker extension with mongodb. Meant for teachers who want their students to work offline.
