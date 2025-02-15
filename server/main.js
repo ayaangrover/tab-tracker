@@ -1,140 +1,220 @@
+require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const cors = require("cors");
+
 const app = express();
-
-app.use(cors());
+const cors = require("cors");
 app.use(express.json());
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "https://ayaangrover.is-a.dev");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
 
-const mongoURI =
-  "MONGO_DB_URI";
+const mongoURI = process.env["mongoURI"];
 
 mongoose
   .connect(mongoURI)
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log(err));
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
 
-const userSchema = new mongoose.Schema({
-  username: String,
-  password: String,
-});
-
-const activitySchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  activity: [
+const recipeSchema = new mongoose.Schema({
+  name: String,
+  author: { type: mongoose.Schema.Types.ObjectId, ref: "Author" },
+  image: String,
+  ingredients: [String],
+  steps: [String],
+  reviews: [
     {
-      tabVisited: String,
-      timestamp: Date,
+      user: String,
+      rating: { type: Number, min: 1, max: 5 },
+      comment: String,
     },
   ],
 });
 
-const User = mongoose.model("User", userSchema);
-const Activity = mongoose.model("Activity", activitySchema);
+const authorSchema = new mongoose.Schema({
+  name: String,
+  bio: String,
+  email: { type: String, unique: true },
+});
 
-app.post("/register", async (req, res) => {
-  const { username, password } = req.body;
+const Recipe = mongoose.model("Recipe", recipeSchema);
+const Author = mongoose.model("Author", authorSchema);
 
-  if (!username || !password) {
-    return res
-      .status(400)
-      .json({ message: "Username and password are required." });
-  }
-
+app.get("/recipes", async (req, res) => {
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ username, password: hashedPassword });
-    await newUser.save();
-    res.status(201).json({ message: "User Registered" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error during registration" });
+    const recipes = await Recipe.find().populate("author", "name");
+    res.json(recipes);
+  } catch (error) {
+    res.status(500).send("Error fetching recipes");
   }
 });
 
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
-  const user = await User.findOne({ username });
-
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).send("Invalid Credentials");
+app.get("/recipes/:id", async (req, res) => {
+  try {
+    const recipe = await Recipe.findById(req.params.id).populate(
+      "author",
+      "name",
+    );
+    if (!recipe) return res.status(404).send("Recipe not found");
+    res.json(recipe);
+  } catch (error) {
+    res.status(500).send("Error fetching recipe");
   }
-
-  res.json({ userId: user._id, username: user.username });
 });
 
-app.post("/track", async (req, res) => {
-  const { userId, tabVisited } = req.body;
-
-  if (!userId || !tabVisited) {
-    return res.status(400).send("User ID and tabVisited are required.");
-  }
-
-  const now = new Date();
-  const tenMinutesAgo = new Date(now.getTime() - 10 * 60000); 
-  
-  const existingActivity = await Activity.findOne({
-    userId,
-    "activity.tabVisited": tabVisited,
-    "activity.timestamp": { $gte: tenMinutesAgo },
-  });
-
-  if (existingActivity) {
-    return res
-      .status(200)
-      .send("Activity already logged in the past 10 minutes.");
-  }
-
-  const activityEntry = {
-    tabVisited,
-    timestamp: now,
-  };
-
-  const activityRecord = await Activity.findOne({ userId });
-
-  if (activityRecord) {
-    activityRecord.activity.push(activityEntry);
-    await activityRecord.save();
-  } else {
-    const newActivity = new Activity({
-      userId,
-      activity: [activityEntry],
+app.post("/recipes", async (req, res) => {
+  try {
+    let author = await Author.findOne({ name: req.body.author });
+    if (!author) {
+      author = new Author({ name: req.body.author });
+      await author.save();
+    }
+    const newRecipe = new Recipe({
+      ...req.body,
+      author: author._id,
     });
-    await newActivity.save();
+    await newRecipe.save();
+    res.status(201).send("Recipe added successfully");
+  } catch (error) {
+    res.status(500).send("Error adding recipe");
   }
-
-  console.log("Activity logged:", tabVisited);
-  res.status(201).send("Activity Logged");
 });
 
-app.delete("/clear-entries", async (req, res) => {
+app.put("/recipes/:id", async (req, res) => {
   try {
-    await Activity.deleteMany({});
-
-    res.status(200).send("All activity entries cleared successfully.");
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Error clearing all entries.");
+    const updatedRecipe = await Recipe.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true },
+    );
+    if (!updatedRecipe) return res.status(404).send("Recipe not found");
+    res.json(updatedRecipe);
+  } catch (error) {
+    res.status(500).send("Error updating recipe");
   }
 });
 
-app.get("/activity", async (req, res) => {
+app.delete("/recipes/:id", async (req, res) => {
   try {
-    const activities = await Activity.find().populate("userId"); 
-
-    const response = activities.map((activity) => ({
-      userId: activity.userId.username,
-      activity: activity.activity,
-    }));
-
-    res.json(response);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server error");
+    const deletedRecipe = await Recipe.findByIdAndDelete(req.params.id);
+    if (!deletedRecipe) return res.status(404).send("Recipe not found");
+    res.send("Recipe deleted");
+  } catch (error) {
+    res.status(500).send("Error deleting recipe");
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
+app.get("/authors", async (req, res) => {
+  try {
+    const authors = await Author.find();
+    res.json(authors);
+  } catch (error) {
+    res.status(500).send("Error fetching authors");
+  }
 });
+
+app.get("/authors/:id", async (req, res) => {
+  try {
+    const author = await Author.findById(req.params.id);
+    if (!author) return res.status(404).send("Author not found");
+    res.json(author);
+  } catch (error) {
+    res.status(500).send("Error fetching author");
+  }
+});
+
+app.post("/authors", async (req, res) => {
+  try {
+    const newAuthor = new Author(req.body);
+    await newAuthor.save();
+    res.status(201).send("Author added successfully");
+  } catch (error) {
+    res.status(500).send("Error adding author");
+  }
+});
+
+app.put("/authors/:id", async (req, res) => {
+  try {
+    const updatedAuthor = await Author.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true },
+    );
+    if (!updatedAuthor) return res.status(404).send("Author not found");
+    res.json(updatedAuthor);
+  } catch (error) {
+    res.status(500).send("Error updating author");
+  }
+});
+
+app.delete("/authors/:id", async (req, res) => {
+  try {
+    const deletedAuthor = await Author.findByIdAndDelete(req.params.id);
+    if (!deletedAuthor) return res.status(404).send("Author not found");
+    res.send("Author deleted");
+  } catch (error) {
+    res.status(500).send("Error deleting author");
+  }
+});
+
+app.get("/recipes/:id/reviews", async (req, res) => {
+  try {
+    const recipe = await Recipe.findById(req.params.id);
+    if (!recipe) return res.status(404).send("Recipe not found");
+    res.json(recipe.reviews);
+  } catch (error) {
+    res.status(500).send("Error fetching reviews");
+  }
+});
+
+app.post("/recipes/:id/reviews", async (req, res) => {
+  try {
+    const recipe = await Recipe.findById(req.params.id);
+    if (!recipe) return res.status(404).send("Recipe not found");
+
+    const newReview = req.body;
+    recipe.reviews.push(newReview);
+    await recipe.save();
+    res.status(201).send("Review added");
+  } catch (error) {
+    res.status(500).send("Error adding review");
+  }
+});
+
+app.put("/reviews/:recipeId/:reviewId", async (req, res) => {
+  try {
+    const recipe = await Recipe.findById(req.params.recipeId);
+    if (!recipe) return res.status(404).send("Recipe not found");
+
+    const review = recipe.reviews.id(req.params.reviewId);
+    if (!review) return res.status(404).send("Review not found");
+
+    review.set(req.body);
+    await recipe.save();
+    res.json(review);
+  } catch (error) {
+    res.status(500).send("Error updating review");
+  }
+});
+
+app.delete("/reviews/:recipeId/:reviewId", async (req, res) => {
+  try {
+    const recipe = await Recipe.findById(req.params.recipeId);
+    if (!recipe) return res.status(404).send("Recipe not found");
+
+    const review = recipe.reviews.id(req.params.reviewId);
+    if (!review) return res.status(404).send("Review not found");
+
+    review.remove();
+    await recipe.save();
+    res.send("Review deleted");
+  } catch (error) {
+    res.status(500).send("Error deleting review");
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
