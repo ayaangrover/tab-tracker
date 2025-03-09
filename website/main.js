@@ -10,7 +10,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const serverUrl = "http://localhost:3000";
+const serverUrl = "https://tab-tracker-3yi3.onrender.com";
 
 window.latestLiveData = {};
 
