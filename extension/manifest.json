@@ -17,6 +17,6 @@
     "http://localhost:3000/"
   ],
   "externally_connectable": {
-    "matches": ["*://localhost/*"]
+    "matches": ["*://sentinel-apaq.onrender.com/*"]
   }
 }
