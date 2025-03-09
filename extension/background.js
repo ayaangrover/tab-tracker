@@ -1,4 +1,4 @@
-const serverUrl = "https://tab-tracker-3yi3.onrender.com";
+const serverUrl = "https://sentinel-apaq.onrender.com";
 let defaultStudentId = "unknown";
 let whitelist = [];
 
