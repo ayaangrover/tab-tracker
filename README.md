@@ -1,6 +1,6 @@
-# Tab Tracker Extension
+# Sentinel Extension
 
-Tab Tracker is a browser extension designed for teachers to track tabs and manage student browsing.
+Sentinel is a browser extension designed for teachers to track tabs and manage student browsing.
 
 ## Installation
 
