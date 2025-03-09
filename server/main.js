@@ -9,7 +9,8 @@ app.use(express.urlencoded({ extended: true, limit: "500mb" }));
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5500",
-  "chrome-extension://hfgamiidlbiaeogohhjhfamnmmacjjdo"
+  "chrome-extension://hfgamiidlbiaeogohhjhfamnmmacjjdo",
+  "https://ayaangrover.is-a.dev/sentinel/website/"
 ];
 
 app.use((req, res, next) => {
