@@ -1,62 +1,138 @@
-let userId = null;
-chrome.storage.local.get(['userId'], (result) => {
-    if (result.userId) {
-        userId = result.userId;
-        startTrackingTabs();
-    }
-});
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'login') {
-        userId = request.userId;
+const serverUrl = "http://localhost:3000";
+let defaultStudentId = "student_test";
+let whitelist = [];
 
-        chrome.storage.local.set({ userId: userId }, () => {
-            console.log('User ID saved in background script.');
-        });
-
-        startTrackingTabs();
-        sendResponse({ status: 'Tracking started' });
-    }
-});
-
-function startTrackingTabs() {
-    setInterval(async () => {
-        if (!userId) return; 
-
-        const tabs = await chrome.tabs.query({});
-        tabs.forEach(async (tab) => {
-            const tabVisited = tab.url; 
-            await trackActivity(userId, tabVisited);
-        });
-    }, 1000);
+function getStudentId(callback) {
+  chrome.storage.local.get("studentId", (data) => {
+    const id = data.studentId || defaultStudentId;
+    callback(id);
+  });
 }
 
-async function trackActivity(userId, tabVisited) {
-    if (tabVisited) {
-        await fetch('https://d1af270f-5b2a-4e81-97ef-1383b66ba676-00-1an6e8o4o3ogo.worf.replit.dev/track', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ userId, tabVisited })
-        });
+function captureAndSendScreenshot() {
+  chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+    if (chrome.runtime.lastError) {
+      console.error("Error capturing tab:", JSON.stringify(chrome.runtime.lastError));
+      return;
     }
-}
-
-async function loadRules() {
-    const response = await fetch(chrome.runtime.getURL('rules.json'));
-    const rules = await response.json();
-
-    const ruleIds = rules.map(rule => rule.id);
-    chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: ruleIds,
-        addRules: rules
-    }, () => {
-        if (chrome.runtime.lastError) {
-            console.error("Error loading rules:", chrome.runtime.lastError);
-        } else {
-            console.log("Rules loaded successfully");
-        }
+    getStudentId((id) => {
+      fetch(`${serverUrl}/capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: id,
+          screenshot: dataUrl,
+          timestamp: Date.now(),
+        }),
+      })
+        .then((res) => res.text())
+        .then((data) => console.log("Screenshot sent:", data))
+        .catch((err) => console.error("Error sending screenshot:", err));
     });
+  });
 }
 
-loadRules();
+function sendActivity(url) {
+  getStudentId((id) => {
+    fetch(`${serverUrl}/track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: id, tabVisited: url })
+    })
+      .then((res) => res.text())
+      .then((data) => console.log("Activity tracked:", data))
+      .catch((err) => console.error("Error tracking activity:", err));
+  });
+}
+
+async function updateWhitelist() {
+  try {
+    const res = await fetch(`${serverUrl}/rules`);
+    const rules = await res.json();
+    whitelist = rules.map(rule => rule.condition.url);
+    updateDeclarativeRules(whitelist);
+    console.log("Whitelist updated:", whitelist);
+  } catch (err) {
+    console.error("Error updating whitelist:", err);
+  }
+}
+
+function updateDeclarativeRules(allowedUrls) {
+  let dynamicRules = [];
+  let ruleId = 1;
+  allowedUrls.forEach((url) => {
+    dynamicRules.push({
+      id: ruleId,
+      priority: 2,
+      action: { type: "allow" },
+      condition: {
+        urlFilter: url,
+        resourceTypes: ["main_frame"]
+      }
+    });
+  });
+  dynamicRules.push({
+    id: 9999,
+    priority: 1,
+    action: { type: "block" },
+    condition: {
+      regexFilter: "https?://.*",
+      resourceTypes: ["main_frame"]
+    }
+  });
+  let removeIds = [];
+  for (let i = 1; i < ruleId; i++) {
+    removeIds.push(i);
+  }
+  removeIds.push(9999);
+  chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: removeIds,
+    addRules: dynamicRules
+  }, () => {
+    if (chrome.runtime.lastError) {
+      console.error("Error updating dynamic rules:", chrome.runtime.lastError);
+    } else {
+      console.log("Dynamic rules updated.");
+    }
+  });
+}
+
+updateWhitelist();
+setInterval(updateWhitelist, 5000);
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (message.studentId) {
+    chrome.storage.local.set({ studentId: message.studentId }, () => {
+      console.log("Received student id from website:", message.studentId);
+      sendResponse({ status: "ok" });
+    });
+    return true;
+  }
+});
+
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  chrome.tabs.get(activeInfo.tabId, (tab) => {
+    if (tab && tab.url) {
+      sendActivity(tab.url);
+    }
+  });
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url && tab.active) {
+    sendActivity(changeInfo.url);
+  }
+});
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  chrome.tabs.query({ active: true, windowId }, (tabs) => {
+    if (tabs.length > 0 && tabs[0].url) {
+      sendActivity(tabs[0].url);
+    }
+  });
+});
+
+setInterval(captureAndSendScreenshot, 1000);
+
+// hello

@@ -3,217 +3,127 @@ const express = require("express");
 const mongoose = require("mongoose");
 
 const app = express();
-const cors = require("cors");
-app.use(express.json());
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ extended: true, limit: "500mb" }));
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5500",
+  "chrome-extension://hfgamiidlbiaeogohhjhfamnmmacjjdo"
+];
+
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "https://ayaangrover.is-a.dev");
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
   next();
 });
 
 const mongoURI = process.env["mongoURI"];
-
 mongoose
   .connect(mongoURI)
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-const recipeSchema = new mongoose.Schema({
-  name: String,
-  author: { type: mongoose.Schema.Types.ObjectId, ref: "Author" },
-  image: String,
-  ingredients: [String],
-  steps: [String],
-  reviews: [
-    {
-      user: String,
-      rating: { type: Number, min: 1, max: 5 },
-      comment: String,
-    },
-  ],
+let activeStudents = {};
+let historyEntries = [];
+let captureEntries = [];
+
+const ruleSchema = new mongoose.Schema({
+  id: Number,
+  condition: Object,
+  action: Object
+});
+const Rule = mongoose.model("Rule", ruleSchema);
+
+app.post("/track", async (req, res) => {
+  const { userId, tabVisited } = req.body;
+  if (!userId || !tabVisited) return res.status(400).send("Missing parameters");
+  
+  activeStudents[userId] = {
+    lastActivity: Date.now(),
+    currentTab: tabVisited
+  };
+  
+  historyEntries.push({
+    userId,
+    tabVisited,
+    timestamp: Date.now()
+  });
+  
+  res.send("Activity tracked");
+  console.log("Activity tracked:", userId, tabVisited);
 });
 
-const authorSchema = new mongoose.Schema({
-  name: String,
-  bio: String,
-  email: { type: String, unique: true },
+app.get("/students", (req, res) => {
+  const now = Date.now();
+  const students = Object.entries(activeStudents).map(([userId, data]) => ({
+    userId,
+    currentTab: data.currentTab,
+    lastActivity: data.lastActivity,
+    online: now - data.lastActivity < 15000
+  }));
+  res.json(students);
 });
 
-const Recipe = mongoose.model("Recipe", recipeSchema);
-const Author = mongoose.model("Author", authorSchema);
-
-app.get("/recipes", async (req, res) => {
+app.get("/rules", async (req, res) => {
   try {
-    const recipes = await Recipe.find().populate("author", "name");
-    res.json(recipes);
+    const rules = await Rule.find({});
+    res.json(rules);
   } catch (error) {
-    res.status(500).send("Error fetching recipes");
+    res.status(500).send("Error fetching rules");
   }
 });
 
-app.get("/recipes/:id", async (req, res) => {
+app.post("/rules", async (req, res) => {
   try {
-    const recipe = await Recipe.findById(req.params.id).populate(
-      "author",
-      "name",
-    );
-    if (!recipe) return res.status(404).send("Recipe not found");
-    res.json(recipe);
+    const newRules = req.body.rules;
+    await Rule.deleteMany({});
+    await Rule.insertMany(newRules);
+    res.send("Rules updated");
   } catch (error) {
-    res.status(500).send("Error fetching recipe");
+    res.status(500).send("Error updating rules");
   }
 });
 
-app.post("/recipes", async (req, res) => {
-  try {
-    let author = await Author.findOne({ name: req.body.author });
-    if (!author) {
-      author = new Author({ name: req.body.author });
-      await author.save();
-    }
-    const newRecipe = new Recipe({
-      ...req.body,
-      author: author._id,
-    });
-    await newRecipe.save();
-    res.status(201).send("Recipe added successfully");
-  } catch (error) {
-    res.status(500).send("Error adding recipe");
-  }
+app.delete("/clear-entries", (req, res) => {
+  activeStudents = {};
+  res.status(200).send("Entries cleared");
 });
 
-app.put("/recipes/:id", async (req, res) => {
-  try {
-    const updatedRecipe = await Recipe.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true },
-    );
-    if (!updatedRecipe) return res.status(404).send("Recipe not found");
-    res.json(updatedRecipe);
-  } catch (error) {
-    res.status(500).send("Error updating recipe");
-  }
+app.get("/history", (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).send("userId query parameter is required");
+  const userHistory = historyEntries.filter(entry => entry.userId === userId);
+  res.json(userHistory);
 });
 
-app.delete("/recipes/:id", async (req, res) => {
-  try {
-    const deletedRecipe = await Recipe.findByIdAndDelete(req.params.id);
-    if (!deletedRecipe) return res.status(404).send("Recipe not found");
-    res.send("Recipe deleted");
-  } catch (error) {
-    res.status(500).send("Error deleting recipe");
+app.post("/capture", (req, res) => {
+  const { userId, screenshot, timestamp } = req.body;
+  if (!userId || !screenshot || !timestamp) {
+    return res.status(400).send("Missing parameters");
   }
+  captureEntries.push({ userId, screenshot, timestamp });
+  console.log("Capture recorded:", userId);
+  res.send("Capture recorded");
 });
 
-app.get("/authors", async (req, res) => {
-  try {
-    const authors = await Author.find();
-    res.json(authors);
-  } catch (error) {
-    res.status(500).send("Error fetching authors");
+app.get("/capture/latest", (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).send("userId query parameter is required");
+
+  const userCaptures = captureEntries.filter(entry => entry.userId === userId);
+  if (userCaptures.length > 0) {
+    const latestCapture = userCaptures[userCaptures.length - 1];
+    return res.json(latestCapture);
   }
-});
-
-app.get("/authors/:id", async (req, res) => {
-  try {
-    const author = await Author.findById(req.params.id);
-    if (!author) return res.status(404).send("Author not found");
-    res.json(author);
-  } catch (error) {
-    res.status(500).send("Error fetching author");
-  }
-});
-
-app.post("/authors", async (req, res) => {
-  try {
-    const newAuthor = new Author(req.body);
-    await newAuthor.save();
-    res.status(201).send("Author added successfully");
-  } catch (error) {
-    res.status(500).send("Error adding author");
-  }
-});
-
-app.put("/authors/:id", async (req, res) => {
-  try {
-    const updatedAuthor = await Author.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true },
-    );
-    if (!updatedAuthor) return res.status(404).send("Author not found");
-    res.json(updatedAuthor);
-  } catch (error) {
-    res.status(500).send("Error updating author");
-  }
-});
-
-app.delete("/authors/:id", async (req, res) => {
-  try {
-    const deletedAuthor = await Author.findByIdAndDelete(req.params.id);
-    if (!deletedAuthor) return res.status(404).send("Author not found");
-    res.send("Author deleted");
-  } catch (error) {
-    res.status(500).send("Error deleting author");
-  }
-});
-
-app.get("/recipes/:id/reviews", async (req, res) => {
-  try {
-    const recipe = await Recipe.findById(req.params.id);
-    if (!recipe) return res.status(404).send("Recipe not found");
-    res.json(recipe.reviews);
-  } catch (error) {
-    res.status(500).send("Error fetching reviews");
-  }
-});
-
-app.post("/recipes/:id/reviews", async (req, res) => {
-  try {
-    const recipe = await Recipe.findById(req.params.id);
-    if (!recipe) return res.status(404).send("Recipe not found");
-
-    const newReview = req.body;
-    recipe.reviews.push(newReview);
-    await recipe.save();
-    res.status(201).send("Review added");
-  } catch (error) {
-    res.status(500).send("Error adding review");
-  }
-});
-
-app.put("/reviews/:recipeId/:reviewId", async (req, res) => {
-  try {
-    const recipe = await Recipe.findById(req.params.recipeId);
-    if (!recipe) return res.status(404).send("Recipe not found");
-
-    const review = recipe.reviews.id(req.params.reviewId);
-    if (!review) return res.status(404).send("Review not found");
-
-    review.set(req.body);
-    await recipe.save();
-    res.json(review);
-  } catch (error) {
-    res.status(500).send("Error updating review");
-  }
-});
-
-app.delete("/reviews/:recipeId/:reviewId", async (req, res) => {
-  try {
-    const recipe = await Recipe.findById(req.params.recipeId);
-    if (!recipe) return res.status(404).send("Recipe not found");
-
-    const review = recipe.reviews.id(req.params.reviewId);
-    if (!review) return res.status(404).send("Review not found");
-
-    review.remove();
-    await recipe.save();
-    res.send("Review deleted");
-  } catch (error) {
-    res.status(500).send("Error deleting review");
-  }
+  res.json(null);
 });
 
 const PORT = process.env.PORT || 3000;
