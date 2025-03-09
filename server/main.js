@@ -10,7 +10,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5500",
   "chrome-extension://hfgamiidlbiaeogohhjhfamnmmacjjdo",
-  "https://ayaangrover.is-a.dev/sentinel/website/"
+  "https://ayaangrover.is-a.dev"
 ];
 
 app.use((req, res, next) => {
