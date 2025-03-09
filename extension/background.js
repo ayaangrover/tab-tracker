@@ -1,5 +1,5 @@
-const serverUrl = "http://localhost:3000";
-let defaultStudentId = "student_test";
+const serverUrl = "https://tab-tracker-3yi3.onrender.com";
+let defaultStudentId = "unknown";
 let whitelist = [];
 
 function getStudentId(callback) {
