@@ -1,10 +1,10 @@
 const firebaseConfig = {
-  apiKey: "AIzaSyCIrLR4pGTuKj6syoSTfRG3crWWsZVinMY",
-  authDomain: "tab-tracker8.firebaseapp.com",
-  projectId: "tab-tracker8",
-  storageBucket: "tab-tracker8.firebasestorage.app",
-  messagingSenderId: "227019883089",
-  appId: "1:227019883089:web:2b4b615eaab2aa3e9fee70"
+  apiKey: "AIzaSyC7Nzoe0pctRTmSboQNbSxxAzkYahFNtWw",
+  authDomain: "sentinel-tracker-8.firebaseapp.com",
+  projectId: "sentinel-tracker-8",
+  storageBucket: "sentinel-tracker-8.firebasestorage.app",
+  messagingSenderId: "1004030770470",
+  appId: "1:1004030770470:web:724f8dbece36e79d6a15e7"
 };
 
 firebase.initializeApp(firebaseConfig);
