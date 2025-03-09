@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   auth.onAuthStateChanged(async user => {
     if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-      chrome.runtime.sendMessage("hfgamiidlbiaeogohhjhfamnmmacjjdo", { studentId: user.uid }, response => {
+      chrome.runtime.sendMessage("pliclfbpbnfcbjljldgojjlgildhkdib", { studentId: user.uid }, response => {
         console.log("Extension responded:", response);
       });
     }
